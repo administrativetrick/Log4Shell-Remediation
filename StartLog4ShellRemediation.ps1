@@ -1,4 +1,4 @@
-﻿<#	
+<#	
 	.NOTES
 	===========================================================================
 	 Created on:   	12/16/2021 12:41 PM
@@ -7,22 +7,29 @@
 	===========================================================================
 	.DESCRIPTION
 		This script should be used to remediate the Log4Shell Vulnerability.
+	.PARAMETER files
+		The Path to the vulnerable jar file that you want to remove a vulnerable file from.
+	.PARAMETER FilesToRemove
+		The file name that you would like to remove from the jar file. Defaults to JndiLookup.class
+	.EXAMPLE
+		Start-Log4ShellRemediation.ps1 -files 'C:\temp\log4shell_example\log4j-core-2.12.0.jar'
+	.EXAMPLE
+		Start-Log4ShellRemediation.ps1 -files 'C:\temp\log4shell_example\log4j-core-2.12.0.jar' -FilesToRemove 'someotherfile.class'
 #>
 
 Param (
 	[Parameter(Mandatory = $true,
 			   ValueFromPipeline = $true)]
-	[ValidatePattern('.*\.jar$')]
-	[string[]]$files
+	[string[]]$files,
+	[Parameter(Mandatory = $false,
+			   ValueFromPipeline = $true)]
+	[string[]]$FilesToRemove = 'JndiLookup.class'
 )
 
-#Loads the required .net assembly for file compression operations
-[Reflection.Assembly]::LoadWithPartialName('System.IO.Compression') | out-null
-
+Add-Type -AssemblyName System.Web
+$files = [System.Web.HttpUtility]::UrlDecode($files)
 #Replaces the .jar file extensions in files passed from files parameter and loads them into a new zipfile variable
 $zipfile = $files.replace(".jar", ".zip")
-#Place file names that you want to remove from a zip file in this variable
-$FilesToRemove = 'JndiLookup.class'
 
 #Function to test if EventLog Source Exists
 function Test-EventLogSource
@@ -91,6 +98,9 @@ function ConvertFrom-ZipToJar
 #Function to remove files from a compressed archive
 function Remove-FileFromCompressedFile
 {
+	#Loads the required .net assembly for file compression operations
+	[Reflection.Assembly]::LoadWithPartialName('System.IO.Compression') | out-null
+	
 	$stream = New-Object IO.FileStream($zipfile, [IO.FileMode]::Open)
 	$mode = [IO.Compression.ZipArchiveMode]::Update
 	$zip = New-Object IO.Compression.ZipArchive($stream, $mode)
@@ -100,6 +110,10 @@ function Remove-FileFromCompressedFile
 		{
 			$_.Delete()
 			Write-EventLogs -Message "Deleting $FilesToRemove from $file" -Color "Yellow"
+			If (($_.name -eq $null -OR $_.name -eq ""))
+			{
+				Write-Host "No targeted files found"
+			}
 		}
 		catch
 		{
